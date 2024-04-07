@@ -77,80 +77,107 @@ describe("MedicalRecords Contract", function () {
 	});
 
 	it("simple string test", async function () {
-		// Compute the shared secret
+		// First, we get the public keys of the doctor and the patient from the contract.
 		const doctorPublicKeyHex = await CONTRACT.publicKeys(DOCTOR.address);
-		const doctorPublicKeyBytes = v5ethers.utils.arrayify(doctorPublicKeyHex);
 		const patientPublicKeyHex = await CONTRACT.publicKeys(PATIENT.address);
+
+		// We then convert these public keys from hexadecimal strings to byte arrays.
+		const doctorPublicKeyBytes = v5ethers.utils.arrayify(doctorPublicKeyHex);
 		const patientPublicKeyBytes = v5ethers.utils.arrayify(patientPublicKeyHex);
+
+		// We compute a shared secret for the patient using the doctor's public key.
+		// This is done using the elliptic curve Diffie-Hellman (ECDH) protocol.
 		const sharedSecret_P = new SigningKey(
 			PATIENT.privateKey
 		).computeSharedSecret(doctorPublicKeyBytes);
 
+		// Similarly, we compute a shared secret for the doctor using the patient's public key.
 		const sharedSecret_D = new SigningKey(
 			DOCTOR.privateKey
 		).computeSharedSecret(patientPublicKeyBytes);
+
+		// We check that the shared secrets computed by the doctor and the patient are the same.
+		// This is a fundamental property of the ECDH protocol.
 		expect(sharedSecret_P).to.equal(sharedSecret_D);
 
+		// We then define a test string.
 		const TEST_STRING = "This is a test string.";
+
+		// We encrypt this test string using the shared secret and the helper.encrypt function.
 		const encryptedString = await helper.encrypt(TEST_STRING, sharedSecret_P);
+
+		// We then decrypt the encrypted string using the shared secret and the helper.decrypt function.
 		const decryptedString = await helper.decrypt(
 			encryptedString,
 			sharedSecret_D
 		);
+
+		// Finally, we check that the decrypted string is the same as the original test string.
 		expect(decryptedString).to.equal(TEST_STRING);
 	});
 
+	// This test case is for when a patient saves a file.
 	it("save file from patient", async function () {
-		// Get the public key of the doctor from the contract
+		// Retrieve the doctor's public key from the contract.
 		const doctorPublicKeyHex = await CONTRACT.publicKeys(DOCTOR.address);
 
-		// Convert the public key to a bytes array, which is what ethers.js expects
+		// Convert the public key from a hexadecimal string to a byte array.
 		const doctorPublicKeyBytes = v5ethers.utils.arrayify(doctorPublicKeyHex);
 
-		// Compute the shared secret
+		// Compute the shared secret using the patient's private key and the doctor's public key.
+		// This shared secret will be used to encrypt the file.
 		const sharedSecret = new SigningKey(PATIENT.privateKey).computeSharedSecret(
 			doctorPublicKeyBytes
 		);
 
-		// Encrypt the file with the shared secret
+		// Read and compress the file, then encrypt it using the shared secret.
 		const FILE = await helper.compressPDF("./example.pdf");
 		const encryptedFile = await helper.encrypt(FILE, sharedSecret);
 		const encryptedFileBytes = helper.base64ToBytes(encryptedFile);
 
-		// Save the file for doctor
+		// Save the encrypted file in the contract, granting access to the doctor.
 		await CONTRACT.connect(PATIENT).modifyAccess(
 			DOCTOR.address,
 			true,
 			encryptedFileBytes
 		);
 
-		// Check if the doctor has access to the patient's file
+		// Assert that the doctor now has permission to access the patient's file.
 		expect(
 			await CONTRACT.getDoctorPermission(PATIENT.address, DOCTOR.address)
 		).to.equal(true);
 	});
+
+	// This test case is for when a doctor checks a file saved by a patient.
 	it("Check file on doctor's end", async function () {
+		// Retrieve the patient's public key from the contract.
 		const PATIENTPublicKeyHex = await CONTRACT.publicKeys(PATIENT.address);
+
+		// Compute the shared secret using the doctor's private key and the patient's public key.
+		// This shared secret will be used to decrypt the file.
 		const sharedSecret = new SigningKey(DOCTOR.privateKey).computeSharedSecret(
 			PATIENTPublicKeyHex
 		);
 
+		// Retrieve the encrypted file from the contract.
 		const doctorFile = await CONTRACT.getDoctorFiles(
 			PATIENT.address,
 			DOCTOR.address
-		); // Convert the encrypted file from bytes to base64
+		);
 
-		const encryptedFileBase64 = await helper.bytesToBase64(doctorFile); // Decrypt the base64 file
+		// Convert the encrypted file from bytes to a base64 string.
+		const encryptedFileBase64 = await helper.bytesToBase64(doctorFile);
 
+		// Decrypt the base64 string to get the original file content.
 		const decryptedFileBase64 = await helper.decrypt(
 			encryptedFileBase64,
 			sharedSecret
-		); // Decompress the file
+		);
 
+		// Decompress the file and save it locally for further checks.
 		await helper.decompressPDF(decryptedFileBase64, "doctor");
 	});
 
-	/*
 	it("Access Modification - Revoke a doctor's access to patient's record", async function () {
 		await CONTRACT.connect(PATIENT).modifyAccess(
 			DOCTOR.address,
@@ -161,5 +188,4 @@ describe("MedicalRecords Contract", function () {
 			await CONTRACT.getDoctorPermission(PATIENT.address, DOCTOR.address)
 		).to.equal(false);
 	});
-	 */
 });

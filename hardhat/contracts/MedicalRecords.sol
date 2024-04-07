@@ -3,18 +3,20 @@ pragma solidity ^0.8.0;
 
 // Contract to handle the storage of Medical Records
 contract MedicalRecords {
-    // Define roles for users
+    // Enum to define roles for users
     enum Role {
         None,
         Patient,
         Doctor
     }
 
-    // Patient struct
+    // Struct to define a patient
     struct Patient {
-        bool exists; // Encrypted IPFS link to the patient's medical record
-        mapping(address => bool) doctorPermission; // Mapping to keep track of doctors authorized to access the medical record
-        mapping(address => bytes) doctorFiles; // Mapping to keep track of files associated with each authorized doctor
+        bool exists; // Flag to check if a patient exists
+        // Mapping to keep track of doctors authorized to access the patient's medical record
+        mapping(address => bool) doctorPermission;
+        // Mapping to keep track of data associated with each authorized doctor
+        mapping(address => bytes) doctorFiles;
     }
 
     // Mapping from user's address to their public keys
@@ -24,6 +26,7 @@ contract MedicalRecords {
     // Mapping from patient's address to their records
     mapping(address => Patient) public patients;
 
+    // Mapping from doctor's address to their list of patients
     mapping(address => address[]) public docterAccess;
 
     address[] public docterList;
@@ -31,7 +34,7 @@ contract MedicalRecords {
     address[] public patientList;
     uint256 public patientCount;
 
-    // Modifier for role-based access control
+    // Modifier for role-based control
     modifier onlyRole(Role _role) {
         require(userRoles[msg.sender] == _role, "Not authorized.");
         _;
@@ -40,15 +43,14 @@ contract MedicalRecords {
     // Empty constructor
     constructor() {}
 
+    // Function to assign a user a role (Patient or Doctor) and store their public key
     function modifyUser(bytes calldata publicKey, Role _role) public {
         require(_role == Role.Patient || _role == Role.Doctor, "Invalid role.");
-        require(userRoles[msg.sender] == Role.None, "Role assigned Already");
-        if (_role == Role.Doctor && publicKeys[msg.sender].length == 0) {
+        require(userRoles[msg.sender] == Role.None, "Role already assigned.");
+        if (_role == Role.Doctor) {
             docterList.push(msg.sender);
             docterCount++;
-        } else if (
-            _role == Role.Patient && publicKeys[msg.sender].length == 0
-        ) {
+        } else if (_role == Role.Patient) {
             patientList.push(msg.sender);
             patientCount++;
         }
@@ -56,7 +58,7 @@ contract MedicalRecords {
         userRoles[msg.sender] = _role;
     }
 
-    // Function to modify doctor access to patient's medical record
+    // Function to modify doctor's access to patient's medical record
     // This function allows a patient to give or revoke a doctor's access to their medical records
     function modifyAccess(
         address _doctor,
@@ -73,6 +75,7 @@ contract MedicalRecords {
         }
     }
 
+    // Function to check if a doctor has permission to access a patient's data
     function getDoctorPermission(
         address _patient,
         address _doctor
@@ -80,6 +83,7 @@ contract MedicalRecords {
         return patients[_patient].doctorPermission[_doctor];
     }
 
+    // Function to get the data associated with a doctor for a patient
     function getDoctorFiles(
         address _patient,
         address _doctor
